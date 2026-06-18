@@ -6,6 +6,7 @@ interface SessionCardProps {
   endsAt: Date;
   spotsRemaining: number;
   tutorName: string;
+  isBooked: boolean;
   isBooking: boolean;
   onBook: () => void;
 }
@@ -26,12 +27,13 @@ export default function SessionCard({
   endsAt,
   spotsRemaining,
   tutorName,
+  isBooked,
   isBooking,
   onBook,
 }: SessionCardProps) {
   const isFull = spotsRemaining === 0;
-  const isDisabled = isFull || isBooking;
-  const buttonLabel = isBooking ? "Booking…" : isFull ? "Full" : "Book";
+  const isDisabled = isFull || isBooking || isBooked;
+  const buttonLabel = isBooking ? "Booking…" : isBooked ? "Booked" : isFull ? "Full" : "Book";
 
   return (
     <div className="border border-gray-200 rounded-lg p-4 flex flex-col gap-2">

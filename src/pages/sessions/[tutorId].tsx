@@ -13,20 +13,30 @@ export default function TutorSessionsPage() {
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
-  const { data: sessions, isLoading, isError, refetch } = trpc.session.getAvailableSessions.useQuery(
+  const { data: sessions, isLoading, isError, refetch: refetchSessions } = trpc.session.getAvailableSessions.useQuery(
     { tutorId },
     { enabled: !!tutorId }
   );
+
+  const { data: myBookings, refetch: refetchMyBookings } = trpc.session.getStudentBookings.useQuery(
+    { studentId: STUDENT_ID, status: "confirmed" },
+  );
+
+  // Set of session IDs the current student has already confirmed — used to
+  // disable the Book button without waiting for a failed mutation.
+  const bookedSessionIds = new Set(myBookings?.map((b) => b.sessionId) ?? []);
 
   const bookSession = trpc.session.bookSession.useMutation({
     onSuccess: (booking) => {
       setFeedback({ type: "success", text: `Booked successfully! Booking ID: ${booking.id}` });
       setBookingSessionId(null);
-      refetch();
+      refetchSessions();
+      refetchMyBookings();
     },
     onError: (err) => {
       setFeedback({ type: "error", text: err.message });
       setBookingSessionId(null);
+      refetchMyBookings();
     },
   });
 
@@ -79,6 +89,7 @@ export default function TutorSessionsPage() {
                   endsAt={session.endsAt}
                   spotsRemaining={session.spotsRemaining}
                   tutorName={session.tutorName}
+                  isBooked={bookedSessionIds.has(session.id)}
                   isBooking={bookingSessionId === session.id}
                   onBook={() => handleBook(session.id)}
                 />
