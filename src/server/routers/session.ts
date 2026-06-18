@@ -120,8 +120,10 @@ export const sessionRouter = router({
 
       // Check for an existing booking record for this student+session pair.
       // The schema enforces @@unique([studentId, sessionId]), so there can be at most one.
+      const bookingKey = { studentId: input.studentId, sessionId: input.sessionId };
+
       const existing = await ctx.prisma.booking.findUnique({
-        where: { studentId_sessionId: { studentId: input.studentId, sessionId: input.sessionId } },
+        where: { studentId_sessionId: bookingKey },
       });
 
       if (existing?.status === "confirmed") {
@@ -131,8 +133,8 @@ export const sessionRouter = router({
       // Upsert rather than create: if the student previously cancelled their booking,
       // the unique record already exists and we reactivate it instead of inserting a duplicate.
       return ctx.prisma.booking.upsert({
-        where: { studentId_sessionId: { studentId: input.studentId, sessionId: input.sessionId } },
-        create: { studentId: input.studentId, sessionId: input.sessionId, notes: input.notes, status: "confirmed" },
+        where: { studentId_sessionId: bookingKey },
+        create: { ...bookingKey, notes: input.notes, status: "confirmed" },
         update: { status: "confirmed", notes: input.notes },
         include: { session: true },
       });
@@ -204,12 +206,12 @@ export const sessionRouter = router({
     )
     .query(async ({ ctx, input }) => {
       // Fetch all bookings for the student, joining session and tutor in one query.
-      // The optional status filter is spread into the where clause only when provided,
-      // so omitting it returns both confirmed and cancelled bookings.
+      // Prisma treats undefined fields in where as "no filter", so passing
+      // status: undefined (when omitted by the caller) returns all statuses.
       const bookings = await ctx.prisma.booking.findMany({
         where: {
           studentId: input.studentId,
-          ...(input.status ? { status: input.status } : {}),
+          status: input.status,
         },
         include: {
           session: {

@@ -31,6 +31,7 @@ export default function SessionCard({
 }: SessionCardProps) {
   const isFull = spotsRemaining === 0;
   const isDisabled = isFull || isBooking;
+  const buttonLabel = isBooking ? "Booking…" : isFull ? "Full" : "Book";
 
   return (
     <div className="border border-gray-200 rounded-lg p-4 flex flex-col gap-2">
@@ -65,7 +66,7 @@ export default function SessionCard({
             : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
         }`}
       >
-        {isBooking ? "Booking…" : isFull ? "Full" : "Book"}
+        {buttonLabel}
       </button>
     </div>
   );
