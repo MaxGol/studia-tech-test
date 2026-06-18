@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -q 'src/server/routers/session\\.ts' && npm test || true",
+            "statusMessage": "Running tests..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -q 'src/server/routers/session\\.ts' && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"Reminder: review and update the explanatory comment above the implementation you just changed. Comments must explain the WHY — non-obvious decisions such as upsert vs create, soft-delete rationale, confirmed-only booking counts, in-memory vs DB filtering, and flattened response shapes. Keep them accurate and current.\"}}' || true",
+            "statusMessage": "Checking implementation comments..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | grep -qE '\\.(ts|tsx)$' && npx tsc --noEmit || true",
+            "statusMessage": "Checking TypeScript..."
+          }
+        ]
+      }
+    ]
+  }
+}

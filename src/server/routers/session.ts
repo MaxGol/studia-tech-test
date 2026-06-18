@@ -40,8 +40,41 @@ export const sessionRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // TODO: Implement this procedure
-      throw new Error("Not implemented");
+      // Fetch all future sessions for this tutor, counting only confirmed bookings
+      // so that cancelled bookings don't artificially reduce available capacity.
+      // Prisma's _count with a where clause lets us do this in a single query.
+      const now = new Date();
+
+      const sessions = await ctx.prisma.session.findMany({
+        where: {
+          tutorId: input.tutorId,
+          startsAt: { gt: now },
+        },
+        include: {
+          tutor: { select: { name: true, subject: true } },
+          _count: {
+            select: {
+              bookings: { where: { status: "confirmed" } },
+            },
+          },
+        },
+        orderBy: { startsAt: "asc" },
+      });
+
+      // Filter out fully booked sessions in-memory (confirmed count >= capacity),
+      // then flatten tutor fields and compute spotsRemaining for the client.
+      return sessions
+        .filter((s) => s._count.bookings < s.capacity)
+        .map((s) => ({
+          id: s.id,
+          title: s.title,
+          startsAt: s.startsAt,
+          endsAt: s.endsAt,
+          capacity: s.capacity,
+          spotsRemaining: s.capacity - s._count.bookings,
+          tutorName: s.tutor.name,
+          tutorSubject: s.tutor.subject,
+        }));
     }),
 
   /**
@@ -71,8 +104,38 @@ export const sessionRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement this procedure
-      throw new Error("Not implemented");
+      // Validate the session exists and is still in the future.
+      // We count only confirmed bookings here — a cancelled booking does not
+      // hold a spot, so it must not block a new booking.
+      const now = new Date();
+
+      const session = await ctx.prisma.session.findUnique({
+        where: { id: input.sessionId },
+        include: { _count: { select: { bookings: { where: { status: "confirmed" } } } } },
+      });
+
+      if (!session) throw new Error("Session not found");
+      if (session.startsAt <= now) throw new Error("Session is in the past");
+      if (session._count.bookings >= session.capacity) throw new Error("Session is fully booked");
+
+      // Check for an existing booking record for this student+session pair.
+      // The schema enforces @@unique([studentId, sessionId]), so there can be at most one.
+      const existing = await ctx.prisma.booking.findUnique({
+        where: { studentId_sessionId: { studentId: input.studentId, sessionId: input.sessionId } },
+      });
+
+      if (existing?.status === "confirmed") {
+        throw new Error("Student already has a confirmed booking for this session");
+      }
+
+      // Upsert rather than create: if the student previously cancelled their booking,
+      // the unique record already exists and we reactivate it instead of inserting a duplicate.
+      return ctx.prisma.booking.upsert({
+        where: { studentId_sessionId: { studentId: input.studentId, sessionId: input.sessionId } },
+        create: { studentId: input.studentId, sessionId: input.sessionId, notes: input.notes, status: "confirmed" },
+        update: { status: "confirmed", notes: input.notes },
+        include: { session: true },
+      });
     }),
 
   /**
@@ -99,8 +162,26 @@ export const sessionRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // TODO: Implement this procedure
-      throw new Error("Not implemented");
+      // Fetch the booking with its session so we can validate the session start time.
+      // We need session.startsAt to enforce the rule that past sessions cannot be cancelled.
+      const now = new Date();
+
+      const booking = await ctx.prisma.booking.findUnique({
+        where: { id: input.bookingId },
+        include: { session: true },
+      });
+
+      if (!booking) throw new Error("Booking not found");
+      if (booking.status === "cancelled") throw new Error("Booking is already cancelled");
+      if (booking.session.startsAt <= now) throw new Error("Session has already started or passed");
+
+      // Soft-delete: set status to "cancelled" rather than removing the record.
+      // This preserves history and keeps the @@unique([studentId, sessionId]) record
+      // in place so a re-book can upsert it back to "confirmed" later.
+      return ctx.prisma.booking.update({
+        where: { id: input.bookingId },
+        data: { status: "cancelled" },
+      });
     }),
 
   /**
@@ -122,7 +203,38 @@ export const sessionRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // TODO: Implement this procedure
-      throw new Error("Not implemented");
+      // Fetch all bookings for the student, joining session and tutor in one query.
+      // The optional status filter is spread into the where clause only when provided,
+      // so omitting it returns both confirmed and cancelled bookings.
+      const bookings = await ctx.prisma.booking.findMany({
+        where: {
+          studentId: input.studentId,
+          ...(input.status ? { status: input.status } : {}),
+        },
+        include: {
+          session: {
+            include: { tutor: { select: { name: true } } },
+          },
+        },
+        orderBy: { session: { startsAt: "desc" } },
+      });
+
+      // Flatten tutorName to the top level so consumers don't need to
+      // navigate booking.session.tutor.name.
+      return bookings.map((b) => ({
+        id: b.id,
+        studentId: b.studentId,
+        sessionId: b.sessionId,
+        status: b.status,
+        notes: b.notes,
+        createdAt: b.createdAt,
+        session: {
+          id: b.session.id,
+          title: b.session.title,
+          startsAt: b.session.startsAt,
+          endsAt: b.session.endsAt,
+        },
+        tutorName: b.session.tutor.name,
+      }));
     }),
 });
