@@ -4,55 +4,55 @@
 
 | # | Procedure / Component | File | Status |
 |---|---|---|---|
-| 1 | `getAvailableSessions` | `src/server/routers/session.ts` | ⬜ Pending |
-| 2 | `bookSession` | `src/server/routers/session.ts` | ⬜ Pending |
-| 3 | `cancelBooking` | `src/server/routers/session.ts` | ⬜ Pending |
-| 4 | `getStudentBookings` | `src/server/routers/session.ts` | ⬜ Pending |
-| 5 | `SessionCard` component | `src/components/SessionCard.tsx` | ⬜ Pending |
-| 6 | `sessions/[tutorId]` page | `src/pages/sessions/[tutorId].tsx` | ⬜ Pending |
+| 1 | `getAvailableSessions` | `src/server/routers/session.ts` | ✅ Done |
+| 2 | `bookSession` | `src/server/routers/session.ts` | ✅ Done |
+| 3 | `cancelBooking` | `src/server/routers/session.ts` | ✅ Done |
+| 4 | `getStudentBookings` | `src/server/routers/session.ts` | ✅ Done |
+| 5 | `SessionCard` component | `src/components/SessionCard.tsx` | ✅ Done |
+| 6 | `sessions/[tutorId]` page | `src/pages/sessions/[tutorId].tsx` | ✅ Done |
 
-## Part 1 — Backend (graded by `npm test`, 19 tests)
+## Test results
+
+**19/19 passing** — run `npm test` to verify.
+
+Tests are fully independent — each reseeds the database before running.
+
+## Part 1 — Backend (`src/server/routers/session.ts`)
 
 ### 1. `getAvailableSessions`
-- Return future sessions for a tutor that still have capacity
-- Only count `"confirmed"` bookings toward capacity (cancelled ones don't count)
-- Include `spotsRemaining` (capacity − confirmed booking count) as a computed field
-- Include `tutorName` and `tutorSubject` as flattened fields (not nested)
-- Order by `startsAt` ascending
+- Fetches future sessions for a tutor with a single Prisma query using `_count` filtered to `"confirmed"` bookings
+- Filters fully booked sessions in-memory after the query
+- Returns `spotsRemaining` (capacity − confirmed count), `tutorName`, and `tutorSubject` as flattened fields
+- Ordered by `startsAt` ascending
 
 ### 2. `bookSession`
-- Validate session exists, is in the future, is not fully booked
-- Reject if student already has a `"confirmed"` booking for this session
-- Allow re-booking if student previously cancelled — use upsert on `@@unique([studentId, sessionId])`
-- Return the booking with session details
+- Validates session exists, is in the future, and is not fully booked (confirmed only)
+- Rejects duplicate confirmed bookings; allows re-booking after cancellation
+- Uses `upsert` on `@@unique([studentId, sessionId])` to reactivate a cancelled booking rather than inserting a duplicate
+- `bookingKey` extracted to avoid repeating `{ studentId, sessionId }` across `findUnique`, `upsert.where`, and `upsert.create`
 
 ### 3. `cancelBooking`
-- Find booking by ID; throw if not found
-- Throw if already `"cancelled"`
-- Throw if session has already started (`startsAt <= now`)
-- Soft-delete: set `status = "cancelled"`, do not remove the record
-- Return the updated booking
+- Fetches booking with session included to validate `session.startsAt`
+- Guards: booking must exist, be `"confirmed"`, and session must not have started
+- Soft-deletes by setting `status = "cancelled"` — preserves the unique record for potential re-booking
 
 ### 4. `getStudentBookings`
-- Return all bookings for a student, with session details and flattened `tutorName`
-- Support optional `status` filter (`"confirmed"` | `"cancelled"`)
-- Order by `session.startsAt` descending
+- Single query joining session + tutor
+- `status: input.status` — Prisma ignores `undefined`, so no conditional spread needed
+- Returns `tutorName` flattened to the top level
+- Ordered by `session.startsAt` descending
 
 ## Part 2 — Frontend (manually reviewed)
 
-### 5. `SessionCard` component
-- Display: session title, start/end time, `spotsRemaining`, tutor name
-- Booking button with loading and error states
-- Props: session data + `onBook` callback
+### 5. `SessionCard` (`src/components/SessionCard.tsx`)
+- Props: `title`, `startsAt`, `endsAt`, `spotsRemaining`, `tutorName`, `isBooking`, `onBook`
+- Three button states: available (blue), booking in progress (disabled, "Booking…"), full (disabled, grey)
+- `buttonLabel` extracted from nested ternary for readability
+- Spots badge changes colour: green → amber (≤ 2 spots) → red (full)
 
-### 6. `sessions/[tutorId]` page
-- Read `tutorId` from route params
-- Call `trpc.session.getAvailableSessions`
-- Render a list of `SessionCard` components
-- Wire up `bookSession` mutation; handle success, loading, and error feedback
-
-## Test baseline
-
-Run `npm test` to check progress. Starting state: **6 passed, 13 failed**.
-
-Tests are fully independent — each reseeds the database before running.
+### 6. `sessions/[tutorId]` page (`src/pages/sessions/[tutorId].tsx`)
+- Reads `tutorId` from route; query enabled only once `tutorId` is available
+- Single `feedback` state (`{ type: "success" | "error"; text: string } | null`) replaces separate success/error states
+- Tracks `bookingSessionId` to show per-card loading state without blocking other cards
+- Refetches session list after a successful booking to update spot counts
+- Handles loading, error, and empty states
