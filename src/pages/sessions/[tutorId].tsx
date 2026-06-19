@@ -11,6 +11,7 @@ export default function TutorSessionsPage() {
   const router = useRouter();
   const tutorId = router.query.tutorId as string;
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
+  const [cancellingSessionId, setCancellingSessionId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const { data: sessions, isLoading, isError, refetch: refetchSessions } = trpc.session.getAvailableSessions.useQuery(
@@ -22,9 +23,9 @@ export default function TutorSessionsPage() {
     { studentId: STUDENT_ID, status: "confirmed" },
   );
 
-  // Set of session IDs the current student has already confirmed — used to
-  // disable the Book button without waiting for a failed mutation.
-  const bookedSessionIds = new Set(myBookings?.map((b) => b.sessionId) ?? []);
+  // Map of sessionId → bookingId for the student's confirmed bookings.
+  // Used to show Cancel button and to pass the correct bookingId to cancelBooking.
+  const bookedSessionMap = new Map(myBookings?.map((b) => [b.sessionId, b.id]) ?? []);
 
   const bookSession = trpc.session.bookSession.useMutation({
     onSuccess: (booking) => {
@@ -40,10 +41,31 @@ export default function TutorSessionsPage() {
     },
   });
 
+  const cancelBooking = trpc.session.cancelBooking.useMutation({
+    onSuccess: () => {
+      setFeedback({ type: "success", text: "Booking cancelled successfully." });
+      setCancellingSessionId(null);
+      refetchSessions();
+      refetchMyBookings();
+    },
+    onError: (err) => {
+      setFeedback({ type: "error", text: err.message });
+      setCancellingSessionId(null);
+    },
+  });
+
   function handleBook(sessionId: string) {
     setBookingSessionId(sessionId);
     setFeedback(null);
     bookSession.mutate({ studentId: STUDENT_ID, sessionId });
+  }
+
+  function handleCancel(sessionId: string) {
+    const bookingId = bookedSessionMap.get(sessionId);
+    if (!bookingId) return;
+    setCancellingSessionId(sessionId);
+    setFeedback(null);
+    cancelBooking.mutate({ bookingId });
   }
 
   const tutor = sessions?.[0];
@@ -89,9 +111,11 @@ export default function TutorSessionsPage() {
                   endsAt={session.endsAt}
                   spotsRemaining={session.spotsRemaining}
                   tutorName={session.tutorName}
-                  isBooked={bookedSessionIds.has(session.id)}
+                  isBooked={bookedSessionMap.has(session.id)}
                   isBooking={bookingSessionId === session.id}
+                  isCancelling={cancellingSessionId === session.id}
                   onBook={() => handleBook(session.id)}
+                  onCancel={() => handleCancel(session.id)}
                 />
               ))}
             </div>

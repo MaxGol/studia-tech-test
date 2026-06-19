@@ -8,7 +8,9 @@ interface SessionCardProps {
   tutorName: string;
   isBooked: boolean;
   isBooking: boolean;
+  isCancelling: boolean;
   onBook: () => void;
+  onCancel: () => void;
 }
 
 function formatDateTime(date: Date): string {
@@ -29,11 +31,11 @@ export default function SessionCard({
   tutorName,
   isBooked,
   isBooking,
+  isCancelling,
   onBook,
+  onCancel,
 }: SessionCardProps) {
   const isFull = spotsRemaining === 0;
-  const isDisabled = isFull || isBooking || isBooked;
-  const buttonLabel = isBooking ? "Booking…" : isBooked ? "Booked" : isFull ? "Full" : "Book";
 
   return (
     <div className="border border-gray-200 rounded-lg p-4 flex flex-col gap-2">
@@ -59,17 +61,31 @@ export default function SessionCard({
         {formatDateTime(startsAt)} &ndash; {new Date(endsAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
       </p>
 
-      <button
-        onClick={onBook}
-        disabled={isDisabled}
-        className={`mt-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-          isDisabled
-            ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-            : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
-        }`}
-      >
-        {buttonLabel}
-      </button>
+      {isBooked ? (
+        <button
+          onClick={onCancel}
+          disabled={isCancelling}
+          className={`mt-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            isCancelling
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-white text-red-600 border border-red-300 hover:bg-red-50 cursor-pointer"
+          }`}
+        >
+          {isCancelling ? "Cancelling…" : "Cancel booking"}
+        </button>
+      ) : (
+        <button
+          onClick={onBook}
+          disabled={isFull || isBooking}
+          className={`mt-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            isFull || isBooking
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer"
+          }`}
+        >
+          {isBooking ? "Booking…" : isFull ? "Full" : "Book"}
+        </button>
+      )}
     </div>
   );
 }
